@@ -52,6 +52,160 @@ interface AuditItem {
   createdAt: string;
 }
 
+interface UiAlert {
+  id: string;
+  type: "error" | "warning" | "info" | "success";
+  title: string;
+  message: string;
+}
+
+function StepDataCard({ toolId, data }: { toolId: string; data: any }) {
+  const [search, setSearch] = useState("");
+  if (!data) return null;
+
+  const cleanId = toolId.replace(/^\[recovery\]\s*/, "");
+
+  // 1. Process List Interactive Data Table
+  if (cleanId === "process.list" && Array.isArray(data.processes)) {
+    const processes = data.processes as Array<{ name: string; pid: number; memUsage: string }>;
+    const filtered = search
+      ? processes.filter(
+          (p) =>
+            p.name.toLowerCase().includes(search.toLowerCase()) ||
+            String(p.pid).includes(search)
+        )
+      : processes;
+
+    return (
+      <div className="mt-2.5 bg-[#0a0f1d] border border-slate-800/90 rounded-xl p-3 space-y-2 font-sans">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-slate-200 flex items-center gap-1.5 text-xs">
+            <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+            Active Processes ({processes.length})
+          </span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search processes..."
+            className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 w-36"
+          />
+        </div>
+
+        <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-800/80">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead className="bg-slate-900/90 text-slate-400 font-mono text-[11px] sticky top-0 border-b border-slate-800 z-10">
+              <tr>
+                <th className="py-1.5 px-3">Process Name</th>
+                <th className="py-1.5 px-3">PID</th>
+                <th className="py-1.5 px-3 text-right">Memory</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50 font-mono text-[11px] text-slate-300">
+              {filtered.slice(0, 100).map((proc, i) => (
+                <tr key={i} className="hover:bg-slate-800/40 transition-colors">
+                  <td className="py-1.5 px-3 font-medium text-indigo-300 flex items-center gap-1.5 truncate">
+                    <AppWindow className="w-3 h-3 text-slate-500 shrink-0" />
+                    <span className="truncate">{proc.name}</span>
+                  </td>
+                  <td className="py-1.5 px-3 text-slate-400">{proc.pid}</td>
+                  <td className="py-1.5 px-3 text-right text-slate-300">{proc.memUsage}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Filesystem List File Explorer Grid
+  if (cleanId === "filesystem.list" && Array.isArray(data.files)) {
+    const files = data.files as Array<{ name: string; isDirectory: boolean; size: number; modifiedAt?: string }>;
+    const filteredFiles = search
+      ? files.filter((f) => f.name.toLowerCase().includes(search.toLowerCase()))
+      : files;
+
+    return (
+      <div className="mt-2.5 bg-[#0a0f1d] border border-slate-800/90 rounded-xl p-3 space-y-2 font-sans">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-slate-200 flex items-center gap-1.5 text-xs truncate">
+            <FolderPlus className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+            <span className="truncate">{data.path || "Files"}</span> ({files.length} items)
+          </span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter files..."
+            className="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-[11px] text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 w-32"
+          />
+        </div>
+
+        <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-800/80 divide-y divide-slate-800/50 font-mono text-[11px]">
+          {filteredFiles.slice(0, 100).map((file, i) => (
+            <div key={i} className="p-2 flex items-center justify-between hover:bg-slate-800/40 transition-colors">
+              <div className="flex items-center space-x-2 truncate">
+                {file.isDirectory ? (
+                  <span className="px-1.5 py-0.5 bg-amber-500/10 rounded border border-amber-500/20 text-amber-400 text-[10px]">DIR</span>
+                ) : (
+                  <span className="px-1.5 py-0.5 bg-cyan-500/10 rounded border border-cyan-500/20 text-cyan-400 text-[10px]">FILE</span>
+                )}
+                <span className={`truncate ${file.isDirectory ? "text-amber-300 font-bold" : "text-slate-200"}`}>
+                  {file.name}
+                </span>
+              </div>
+              <span className="text-slate-400 text-[10px] shrink-0 ml-2">
+                {file.isDirectory ? "Folder" : file.size ? `${(file.size / 1024).toFixed(1)} KB` : "0 KB"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Screen Capture Preview Card
+  if (cleanId === "screen.capture" && data.path) {
+    return (
+      <div className="mt-2.5 bg-[#0a0f1d] border border-slate-800/90 rounded-xl p-3 space-y-2 font-sans">
+        <div className="flex items-center space-x-2 text-pink-400 font-semibold text-xs">
+          <Camera className="w-4 h-4" />
+          <span>Desktop Screenshot Captured</span>
+        </div>
+        <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1 text-slate-300">
+          <p><span className="text-slate-500">File Path:</span> {data.path}</p>
+          <p>
+            <span className="text-slate-500">Size:</span> {data.sizeBytes ? `${Math.round(data.sizeBytes / 1024)} KB` : "N/A"} •{" "}
+            <span className="text-slate-500">Duration:</span> {data.durationMs}ms
+          </p>
+          <p>
+            <span className="text-slate-500">Backend:</span>{" "}
+            <span className="text-cyan-400 font-semibold">{data.backend}</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Clipboard Card
+  if (cleanId === "clipboard.read" && data.text) {
+    return (
+      <div className="mt-2.5 bg-[#0a0f1d] border border-slate-800/90 rounded-xl p-3 space-y-1.5 font-sans">
+        <div className="flex items-center space-x-2 text-purple-400 font-semibold text-xs">
+          <Copy className="w-4 h-4" />
+          <span>Clipboard Content</span>
+        </div>
+        <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 font-mono text-slate-200 text-[11px] whitespace-pre-wrap max-h-32 overflow-y-auto">
+          {data.text}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<MessageItem[]>([
     {
@@ -66,6 +220,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [systemHealth, setSystemHealth] = useState<{
     status: string;
@@ -74,10 +229,19 @@ export default function ChatPage() {
   } | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditItem[]>([]);
   const [showAuditModal, setShowAuditModal] = useState(false);
+  const [uiAlert, setUiAlert] = useState<UiAlert | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const showAlert = (type: "error" | "warning" | "info" | "success", title: string, message: string) => {
+    const alertObj: UiAlert = { id: Date.now().toString(), type, title, message };
+    setUiAlert(alertObj);
+    setTimeout(() => {
+      setUiAlert((current) => (current?.id === alertObj.id ? null : current));
+    }, 8000);
+  };
 
   const fetchHealth = async () => {
     try {
@@ -119,7 +283,7 @@ export default function ChatPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const handleSend = async (textToSend?: string) => {
+  const handleSend = async (textToSend?: string, options?: { autoSpeak?: boolean }) => {
     const text = textToSend || input;
     if (!text.trim() || loading) return;
 
@@ -171,6 +335,11 @@ export default function ChatPage() {
 
         setMessages((prev) => [...prev, assistantMsg]);
         fetchAuditLogs();
+
+        // Auto-speak response out loud via Deepgram Aura TTS if message came from voice
+        if (options?.autoSpeak && data.message) {
+          speakText(data.message);
+        }
       } else {
         setMessages((prev) => [
           ...prev,
@@ -264,9 +433,19 @@ export default function ChatPage() {
     }
   };
 
-  // Push-to-Talk Audio Recording with Deepgram STT
+  // Push-to-Talk & Toggle Audio Recording with Deepgram STT
   const startRecording = async () => {
+    if (isRecording || isTranscribing) return;
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showAlert(
+          "error",
+          "Browser Security Restriction",
+          "Microphone access requires HTTPS or http://localhost. Please open this app via http://localhost:3001."
+        );
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -281,7 +460,7 @@ export default function ChatPage() {
         stream.getTracks().forEach((t) => t.stop());
 
         if (audioBlob.size > 0) {
-          setLoading(true);
+          setIsTranscribing(true);
           try {
             const res = await fetch("/api/voice/stt", {
               method: "POST",
@@ -290,20 +469,55 @@ export default function ChatPage() {
             });
             const data = await res.json();
             if (data.success && data.transcript) {
-              handleSend(data.transcript);
+              handleSend(data.transcript, { autoSpeak: true });
+            } else {
+              showAlert(
+                "warning",
+                "No Speech Detected",
+                "Deepgram did not detect any speech in your recording. Please hold or click the mic button and speak clearly into your microphone."
+              );
             }
-          } catch (e) {
+          } catch (e: any) {
             console.error("STT Error:", e);
+            showAlert(
+              "error",
+              "Speech Transcription Failed",
+              `Could not convert speech to text: ${e?.message || "Server error"}`
+            );
           } finally {
-            setLoading(false);
+            setIsTranscribing(false);
           }
         }
       };
 
       mediaRecorder.start();
       setIsRecording(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Microphone Access Error:", err);
+      let title = "Microphone Unavailable";
+      let msg = "Could not access microphone on your computer.";
+
+      if (
+        err.name === "NotFoundError" ||
+        err.name === "DevicesNotFoundError" ||
+        err.message?.toLowerCase().includes("not found")
+      ) {
+        title = "No Microphone Detected";
+        msg = "No hardware microphone was found on your PC. Please connect a USB microphone or headset, or use text input below.";
+      } else if (
+        err.name === "NotAllowedError" ||
+        err.name === "PermissionDeniedError" ||
+        err.message?.toLowerCase().includes("denied")
+      ) {
+        title = "Microphone Permission Denied";
+        msg = "Microphone access was denied by your browser. Please click the lock icon in your browser address bar and grant microphone permission.";
+      } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+        title = "Microphone Busy";
+        msg = "Your microphone is currently in use by another application (Zoom, Teams, Discord, etc.).";
+      }
+
+      showAlert("error", title, msg);
+      setIsRecording(false);
     }
   };
 
@@ -311,6 +525,14 @@ export default function ChatPage() {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
+    }
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
     }
   };
 
@@ -329,14 +551,19 @@ export default function ChatPage() {
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audio.onended = () => setIsPlayingAudio(false);
-        audio.onerror = () => setIsPlayingAudio(false);
+        audio.onerror = () => {
+          setIsPlayingAudio(false);
+          showAlert("warning", "Audio Playback Failed", "Could not play generated voice audio.");
+        };
         await audio.play();
       } else {
         setIsPlayingAudio(false);
+        showAlert("warning", "Speech Generation Failed", "Deepgram TTS service returned an error.");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       setIsPlayingAudio(false);
+      showAlert("error", "TTS Error", e?.message || "Could not connect to speech audio service.");
     }
   };
 
@@ -400,6 +627,34 @@ export default function ChatPage() {
       {/* Main Chat Feed */}
       <div className="flex-1 flex overflow-hidden">
         <main className="flex-1 flex flex-col justify-between max-w-4xl mx-auto w-full p-6">
+          {/* Hardware / Network / Error Notification Banner */}
+          {uiAlert && (
+            <div
+              className={`mb-4 p-3.5 rounded-xl border flex items-center justify-between shadow-lg text-xs transition-all animate-in fade-in slide-in-from-top-2 ${
+                uiAlert.type === "error"
+                  ? "bg-rose-950/80 border-rose-500/50 text-rose-200 shadow-rose-950/50"
+                  : uiAlert.type === "warning"
+                  ? "bg-amber-950/80 border-amber-500/50 text-amber-200 shadow-amber-950/50"
+                  : "bg-cyan-950/80 border-cyan-500/50 text-cyan-200 shadow-cyan-950/50"
+              }`}
+            >
+              <div className="flex items-center space-x-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                <div>
+                  <span className="font-bold text-white block">{uiAlert.title}</span>
+                  <span>{uiAlert.message}</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setUiAlert(null)}
+                className="p-1 hover:bg-white/10 rounded-lg text-slate-300 hover:text-white shrink-0 ml-3 transition-colors"
+                title="Dismiss alert"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Messages List */}
           <div className="flex-1 overflow-y-auto space-y-6 pr-2">
             {messages.map((msg) => (
@@ -491,32 +746,37 @@ export default function ChatPage() {
 
                   {/* Plan Steps Visualizer */}
                   {msg.planSteps && msg.planSteps.length > 0 && (
-                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2">
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-3">
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                        Executed OS Actions
+                        Executed OS Actions & Results
                       </p>
                       {msg.planSteps.map((step, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between bg-slate-900/80 p-2.5 rounded-lg border border-slate-800/80 text-xs font-mono"
+                          className="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-2 text-xs font-mono"
                         >
-                          <div className="flex items-center space-x-2">
-                            <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-                            <span className="text-cyan-300 font-semibold">{step.toolId}</span>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+                              <span className="text-cyan-300 font-bold">{step.toolId}</span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {step.success ? (
+                                <span className="text-emerald-400 flex items-center gap-1 font-sans text-[11px] font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  {step.verified ? "Verified" : "Success"}
+                                </span>
+                              ) : (
+                                <span className="text-rose-400 flex items-center gap-1 font-sans text-[11px] font-semibold bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/30">
+                                  <XCircle className="w-3.5 h-3.5" />
+                                  Failed
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            {step.success ? (
-                              <span className="text-emerald-400 flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                {step.verified ? "Verified" : "Success"}
-                              </span>
-                            ) : (
-                              <span className="text-rose-400 flex items-center gap-1">
-                                <XCircle className="w-3.5 h-3.5" />
-                                Failed
-                              </span>
-                            )}
-                          </div>
+
+                          {/* Render Rich Visual Data Card for Processes, Files, Screenshots, Clipboard */}
+                          {step.data && <StepDataCard toolId={step.toolId} data={step.data} />}
                         </div>
                       ))}
                     </div>
@@ -615,7 +875,25 @@ export default function ChatPage() {
             </button>
           </div>
 
-          {/* Input Box with Voice Push-to-Talk */}
+          {/* Voice Recording / Transcribing Live Status Badge */}
+          {(isRecording || isTranscribing) && (
+            <div className="mt-3 flex items-center justify-center space-x-2 text-xs font-mono">
+              {isRecording && (
+                <div className="flex items-center space-x-2 bg-rose-500/20 text-rose-300 border border-rose-500/40 px-3.5 py-1.5 rounded-full animate-pulse shadow-lg shadow-rose-950/50">
+                  <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+                  <span>🔴 Recording voice... Release mic button or click to finish</span>
+                </div>
+              )}
+              {isTranscribing && (
+                <div className="flex items-center space-x-2 bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-3.5 py-1.5 rounded-full shadow-lg">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                  <span>Transcribing speech via Deepgram Nova-2...</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Input Box with Voice Push-to-Talk & Dual Click/Hold Mic */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -632,21 +910,30 @@ export default function ChatPage() {
               className="flex-1 bg-transparent px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
             />
 
-            {/* Push-to-Talk Mic Button */}
+            {/* Dual Click / Hold Microphone Button */}
             <button
               type="button"
               onMouseDown={startRecording}
               onMouseUp={stopRecording}
               onTouchStart={startRecording}
               onTouchEnd={stopRecording}
-              className={`p-2.5 rounded-xl transition-all shrink-0 ${
+              onClick={(e) => {
+                e.preventDefault();
+                toggleRecording();
+              }}
+              className={`p-2.5 rounded-xl transition-all shrink-0 relative group ${
                 isRecording
-                  ? "bg-rose-600 text-white animate-pulse ring-2 ring-rose-400"
-                  : "bg-slate-800 hover:bg-slate-700 text-slate-300"
+                  ? "bg-rose-600 text-white ring-4 ring-rose-500/50 scale-105 shadow-lg shadow-rose-900/50"
+                  : "bg-slate-800 hover:bg-cyan-600 hover:text-white text-slate-300 hover:scale-105"
               }`}
-              title="Push-to-Talk: Hold to speak"
+              title="Microphone: Click to toggle OR Hold to speak"
             >
-              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              {isRecording ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+
+              {/* Tooltip hint on hover */}
+              <span className="absolute -top-9 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-700 text-[10px] text-slate-200 px-2.5 py-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none shadow-xl z-20">
+                {isRecording ? "Click to stop" : "Hold or Click to speak"}
+              </span>
             </button>
 
             <button

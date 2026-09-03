@@ -221,6 +221,37 @@ export async function POST(req: Request) {
           data: { status: executionResult.allSuccess ? "completed" : "failed" },
         });
 
+        const formatToolSummary = (r: { toolId: string; verified: boolean; data?: any }) => {
+          const toolId = r.toolId.replace(/^\[recovery\]\s*/, "");
+          const data = r.data || {};
+
+          if (toolId === "process.list") {
+            const total = data.total || data.processes?.length || 0;
+            const topApps = (data.processes || []).slice(0, 5).map((p: any) => p.name).filter(Boolean).join(", ");
+            return ` - \`process.list\`: ✅ Listed **${total} active processes** (${topApps}...)`;
+          }
+
+          if (toolId === "filesystem.list") {
+            const total = data.total || data.files?.length || 0;
+            const pathName = data.path || "directory";
+            return ` - \`filesystem.list\`: ✅ Listed **${total} items** in \`${pathName}\``;
+          }
+
+          if (toolId === "screen.capture") {
+            return ` - \`screen.capture\`: ✅ Desktop screenshot captured (${data.sizeBytes ? Math.round(data.sizeBytes / 1024) + " KB" : "saved"}) at \`${data.path}\``;
+          }
+
+          if (toolId === "clipboard.read") {
+            return ` - \`clipboard.read\`: ✅ Clipboard content: "${data.text || ""}"`;
+          }
+
+          if (toolId === "application.open") {
+            return ` - \`application.open\`: ✅ Launched application **${data.application || "app"}**`;
+          }
+
+          return ` - \`${r.toolId}\`: ${r.verified ? "✅ Verified" : "⚠️ Executed"}`;
+        };
+
         if (executionResult.recoveryMessage && executionResult.recoveryAttempted) {
           // Prefix with recovery notice
           const recoveryNote = executionResult.allSuccess
@@ -229,12 +260,12 @@ export async function POST(req: Request) {
 
           assistantResponseText = recoveryNote + (executionResult.allSuccess
             ? `Completed task: **${decision.plan.goal}**\n\n` +
-              results.map((r) => ` - \`${r.toolId}\`: ${r.verified ? "✅ Verified" : "⚠️ Executed"} ${r.data ? JSON.stringify(r.data) : ""}`).join("\n")
+              results.map(formatToolSummary).join("\n")
             : `Task failed after recovery attempt for **${decision.plan.goal}**.`);
 
         } else if (executionResult.allSuccess) {
           assistantResponseText = `Completed task: **${decision.plan.goal}**\n\n` +
-            results.map((r) => ` - \`${r.toolId}\`: ${r.verified ? "✅ Verified" : "⚠️ Executed"} ${r.data ? JSON.stringify(r.data) : ""}`).join("\n");
+            results.map(formatToolSummary).join("\n");
         } else {
           const failedStep = results.find((r) => !r.success);
           assistantResponseText = `Task failed during **${failedStep?.toolId || "execution"}**: ${failedStep?.error || "Unknown error"}`;

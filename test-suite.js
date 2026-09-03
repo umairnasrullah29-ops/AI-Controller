@@ -180,6 +180,86 @@ async function runTestSuite() {
   }
 
   // ---------------------------------------------------------
+  // 7. LOCAL INTENT ENGINE & SPOKEN PHRASING FALLBACKS
+  // ---------------------------------------------------------
+  console.log("\n--- 7. Local Intent Engine & Spoken Phrasing Fallbacks ---");
+  try {
+    const { GeminiProvider } = require("./packages/ai/src/gemini-provider");
+    const provider = new GeminiProvider("dummy-key-for-test");
+
+    // Case 1: "Can you open launchpad for me?"
+    const openRes = await provider.decide({
+      systemPolicy: "test", availableTools: [], conversationContext: [],
+      userMessage: "Can you open launchpad for me?"
+    });
+    assert(openRes.type === "plan" && openRes.plan?.steps[0]?.toolId === "application.open", "Local Intent parses 'Can you open launchpad for me?' to application.open");
+
+    // Case 2: "See my downloads folder and list me the old files..."
+    const downRes1 = await provider.decide({
+      systemPolicy: "test", availableTools: [], conversationContext: [],
+      userMessage: "See my downloads folder and list me the old files I have in my download folder."
+    });
+    assert(downRes1.type === "plan" && downRes1.plan?.steps[0]?.toolId === "filesystem.list", "Local Intent parses Downloads list prompt #1 to filesystem.list");
+
+    // Case 3: "see what files i have in my downloads folder and list them"
+    const downRes2 = await provider.decide({
+      systemPolicy: "test", availableTools: [], conversationContext: [],
+      userMessage: "see what files i have in my downloads folder and list them"
+    });
+    assert(downRes2.type === "plan" && downRes2.plan?.steps[0]?.toolId === "filesystem.list", "Local Intent parses Downloads list prompt #2 to filesystem.list");
+
+    // Case 4: "take a screenshot for me"
+    const screenResIntent = await provider.decide({
+      systemPolicy: "test", availableTools: [], conversationContext: [],
+      userMessage: "take a screenshot for me"
+    });
+    assert(screenResIntent.type === "plan" && screenResIntent.plan?.steps[0]?.toolId === "screen.capture", "Local Intent parses screenshot request to screen.capture");
+
+    // Case 5: "show running processes"
+    const procResIntent = await provider.decide({
+      systemPolicy: "test", availableTools: [], conversationContext: [],
+      userMessage: "show running processes"
+    });
+    assert(procResIntent.type === "plan" && procResIntent.plan?.steps[0]?.toolId === "process.list", "Local Intent parses processes request to process.list");
+  } catch (e) {
+    assert(false, "Local Intent Engine test exception", e.message);
+  }
+
+  // ---------------------------------------------------------
+  // 8. TERMINAL ALLOWLIST & SHELL INJECTION SECURITY
+  // ---------------------------------------------------------
+  console.log("\n--- 8. Terminal Allowlist & Shell Injection Security ---");
+  try {
+    const termTool = getTool("terminal.execute");
+
+    // Safe command: dir
+    const safeExec = await termTool.execute({ command: "dir" });
+    assert(safeExec.success, "Allowlisted command 'dir' succeeds");
+
+    // Un-allowlisted command: rmdir
+    const unallowedExec = await termTool.execute({ command: "rmdir /s /q c:\\" });
+    assert(!unallowedExec.success && unallowedExec.error.includes("allowlist"), "Un-allowlisted command 'rmdir' is blocked");
+
+    // Shell chaining injection attempt: echo foo && dir
+    const chainedExec = await termTool.execute({ command: "echo foo && dir" });
+    assert(!chainedExec.success && chainedExec.error.includes("chaining"), "Shell chaining operator '&&' is strictly blocked");
+  } catch (e) {
+    assert(false, "Terminal security test exception", e.message);
+  }
+
+  // ---------------------------------------------------------
+  // 9. ONEDRIVE & USER PATH RESOLUTION
+  // ---------------------------------------------------------
+  console.log("\n--- 9. OneDrive & User Path Resolution ---");
+  try {
+    const { resolveUserPath } = require("./packages/tools/src/filesystem/list");
+    const resolvedDownloads = resolveUserPath("Downloads");
+    assert(typeof resolvedDownloads === "string" && resolvedDownloads.toLowerCase().includes("downloads"), "resolveUserPath accurately resolves Downloads directory path");
+  } catch (e) {
+    assert(false, "OneDrive path resolution test exception", e.message);
+  }
+
+  // ---------------------------------------------------------
   // TEST SUITE SUMMARY
   // ---------------------------------------------------------
   console.log("\n==========================================================");

@@ -24,16 +24,71 @@ export const openApplicationTool: ToolDefinition<OpenApplicationInput> = {
   timeoutMs: 5000,
   async execute(input: OpenApplicationInput): Promise<ToolResult> {
     try {
-      const sanitizedName = input.name.replace(/[^a-zA-Z0-9._\-]/g, "");
-      const fullCommand = input.args ? `start "" "${sanitizedName}" ${input.args}` : `start "" "${sanitizedName}"`;
+      const nameClean = input.name.trim();
+      const sanitizedName = nameClean.replace(/[^a-zA-Z0-9._\-]/g, "");
 
-      await execAsync(fullCommand, { windowsHide: false });
+      if (process.platform === "win32") {
+        // App alias mappings for common Windows apps & UWP protocols
+        const aliasMap: Record<string, string[]> = {
+          whatsapp: ["whatsapp:", "whatsapp.exe", "WhatsApp"],
+          spotify: ["spotify:", "spotify.exe"],
+          calculator: ["calc.exe", "calculator:"],
+          calc: ["calc.exe"],
+          notepad: ["notepad.exe"],
+          chrome: ["chrome.exe", "googlechrome"],
+          edge: ["msedge.exe", "msedge:"],
+          launchpad: ["shell:AppsFolder", "explorer.exe"],
+          settings: ["ms-settings:"],
+          paint: ["mspaint.exe"],
+        };
 
-      return {
-        success: true,
-        data: { application: sanitizedName, launched: true },
-        verified: true,
-      };
+        const lower = sanitizedName.toLowerCase();
+        const candidates = aliasMap[lower] || [sanitizedName, `${sanitizedName}.exe`, `${sanitizedName}:`];
+
+        let lastErr: Error | null = null;
+        for (const candidate of candidates) {
+          try {
+            const cmd = input.args
+              ? `start "" "${candidate}" ${input.args}`
+              : `start "" "${candidate}"`;
+            await execAsync(cmd, { windowsHide: false });
+            return {
+              success: true,
+              data: { application: sanitizedName, target: candidate, launched: true },
+              verified: true,
+            };
+          } catch (err: any) {
+            lastErr = err;
+          }
+        }
+
+        // Final Fallback: Try PowerShell Start-Process
+        try {
+          await execAsync(
+            `powershell -NoProfile -Command "Start-Process '${sanitizedName}' -ErrorAction Stop"`,
+            { windowsHide: false }
+          );
+          return {
+            success: true,
+            data: { application: sanitizedName, method: "powershell", launched: true },
+            verified: true,
+          };
+        } catch {
+          // If all attempts fail, surface lastErr
+          throw lastErr || new Error(`Could not locate or launch application '${sanitizedName}'`);
+        }
+      }
+
+      // macOS
+      if (process.platform === "darwin") {
+        await execAsync(`open -a "${sanitizedName}"`);
+        return { success: true, data: { application: sanitizedName, launched: true }, verified: true };
+      }
+
+      // Linux
+      await execAsync(`gtk-launch "${sanitizedName}" || "${sanitizedName}"`);
+      return { success: true, data: { application: sanitizedName, launched: true }, verified: true };
+
     } catch (err: any) {
       return {
         success: false,

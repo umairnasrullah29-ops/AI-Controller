@@ -10,18 +10,28 @@ export const ListFilesInputSchema = z.object({
 
 export type ListFilesInput = z.infer<typeof ListFilesInputSchema>;
 
+import * as fsSync from "fs";
+
 export function resolveUserPath(inputPath: string): string {
   let target = inputPath.trim();
   const home = os.homedir();
 
+  const checkFolder = (folderName: string): string => {
+    const std = path.join(home, folderName);
+    if (fsSync.existsSync(std)) return std;
+    const oneDrive = path.join(home, "OneDrive", folderName);
+    if (fsSync.existsSync(oneDrive)) return oneDrive;
+    return std;
+  };
+
   if (target.startsWith("~")) {
     target = path.join(home, target.slice(1));
   } else if (target.toLowerCase() === "downloads") {
-    target = path.join(home, "Downloads");
+    target = checkFolder("Downloads");
   } else if (target.toLowerCase() === "desktop") {
-    target = path.join(home, "Desktop");
+    target = checkFolder("Desktop");
   } else if (target.toLowerCase() === "documents") {
-    target = path.join(home, "Documents");
+    target = checkFolder("Documents");
   }
 
   return path.resolve(target);
