@@ -29,7 +29,9 @@ export const clipboardReadTool: ToolDefinition<ClipboardReadInput> = {
         const { stdout } = await execAsync("pbpaste");
         text = stdout.trim();
       } else {
-        const { stdout } = await execAsync("xclip -selection clipboard -o");
+        const { stdout } = await execAsync(
+          "xclip -selection clipboard -o 2>/dev/null || xsel -b -o 2>/dev/null || wl-paste 2>/dev/null || echo ''"
+        );
         text = stdout.trim();
       }
 

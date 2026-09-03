@@ -35,21 +35,27 @@ export const screenCaptureTool: ToolDefinition<ScreenCaptureInput> = {
 
       // ─── Try Native N-API Addon First (< 10ms on Windows) ───────────────
       if (process.platform === "win32") {
-        const nativeResult = nativeCaptureScreen(outputPath);
-        if (nativeResult) {
-          return {
-            success: true,
-            data: {
-              path: outputPath,
-              widthPx: nativeResult.widthPx,
-              heightPx: nativeResult.heightPx,
-              sizeBytes: nativeResult.sizeBytes,
-              durationMs: nativeResult.durationMs,
-              capturedAt: new Date().toISOString(),
-              backend: "native-gdi",
-            },
-            verified: nativeResult.sizeBytes > 0,
-          };
+        try {
+          const nativeResult = nativeCaptureScreen(outputPath);
+          if (nativeResult && (await fs.stat(outputPath).then(s => s.size > 0).catch(() => false))) {
+            const base64Data = await fs.readFile(outputPath, { encoding: "base64" });
+            return {
+              success: true,
+              data: {
+                path: outputPath,
+                widthPx: nativeResult.widthPx,
+                heightPx: nativeResult.heightPx,
+                sizeBytes: nativeResult.sizeBytes,
+                durationMs: nativeResult.durationMs,
+                capturedAt: new Date().toISOString(),
+                backend: "native-gdi",
+                imageUri: `data:image/png;base64,${base64Data}`,
+              },
+              verified: true,
+            };
+          }
+        } catch {
+          // Native addon not available — fall through to PowerShell
         }
 
         // ─── Fallback: PowerShell GDI ─────────────────────────────────────
@@ -66,6 +72,7 @@ $graphic.Dispose(); $bitmap.Dispose()
         const t0 = Date.now();
         await execAsync(`powershell -NoProfile -Command "${psScript}"`, { windowsHide: true });
         const stats = await fs.stat(outputPath);
+        const psBase64 = await fs.readFile(outputPath, { encoding: "base64" });
         return {
           success: true,
           data: {
@@ -74,6 +81,7 @@ $graphic.Dispose(); $bitmap.Dispose()
             durationMs: Date.now() - t0,
             capturedAt: new Date().toISOString(),
             backend: "powershell-fallback",
+            imageUri: `data:image/png;base64,${psBase64}`,
           },
           verified: stats.size > 0,
         };
@@ -84,23 +92,60 @@ $graphic.Dispose(); $bitmap.Dispose()
         const t0 = Date.now();
         await execAsync(`screencapture -x "${outputPath}"`);
         const stats = await fs.stat(outputPath);
+        const macBase64 = await fs.readFile(outputPath, { encoding: "base64" });
         return {
           success: true,
-          data: { path: outputPath, sizeBytes: stats.size, durationMs: Date.now() - t0, capturedAt: new Date().toISOString(), backend: "screencapture" },
+          data: {
+            path: outputPath,
+            sizeBytes: stats.size,
+            durationMs: Date.now() - t0,
+            capturedAt: new Date().toISOString(),
+            backend: "screencapture",
+            imageUri: `data:image/png;base64,${macBase64}`,
+          },
           verified: stats.size > 0,
         };
       }
 
       // ─── Linux ────────────────────────────────────────────────────────────
       const t0 = Date.now();
-      await execAsync(`import -window root "${outputPath}"`);
-      const stats = await fs.stat(outputPath);
-      return {
-        success: true,
-        data: { path: outputPath, sizeBytes: stats.size, durationMs: Date.now() - t0, capturedAt: new Date().toISOString(), backend: "imagemagick" },
-        verified: stats.size > 0,
-      };
+      const linuxCmds = [
+        `gnome-screenshot -f "${outputPath}"`,
+        `scrot "${outputPath}"`,
+        `grim "${outputPath}"`,
+        `import -window root "${outputPath}"`,
+      ];
 
+      let captured = false;
+      let lastErr: any = null;
+      for (const cmd of linuxCmds) {
+        try {
+          await execAsync(cmd);
+          const stats = await fs.stat(outputPath);
+          if (stats.size > 0) {
+            captured = true;
+            const linBase64 = await fs.readFile(outputPath, { encoding: "base64" });
+            return {
+              success: true,
+              data: {
+                path: outputPath,
+                sizeBytes: stats.size,
+                durationMs: Date.now() - t0,
+                capturedAt: new Date().toISOString(),
+                backend: cmd.split(" ")[0],
+                imageUri: `data:image/png;base64,${linBase64}`,
+              },
+              verified: true,
+            };
+          }
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+
+      if (!captured) throw lastErr || new Error("No Linux screenshot tool found (tried gnome-screenshot, scrot, grim, import)");
+
+      return { success: false, error: "Unsupported operating system", verified: false };
     } catch (err: any) {
       return { success: false, error: err?.message || String(err), verified: false };
     }

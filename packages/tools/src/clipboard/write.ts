@@ -29,7 +29,10 @@ export const clipboardWriteTool: ToolDefinition<ClipboardWriteInput> = {
       } else if (process.platform === "darwin") {
         await execAsync(`echo "${input.text.replace(/"/g, '\\"')}" | pbcopy`);
       } else {
-        await execAsync(`echo "${input.text.replace(/"/g, '\\"')}" | xclip -selection clipboard`);
+        const escaped = input.text.replace(/"/g, '\\"');
+        await execAsync(
+          `echo "${escaped}" | xclip -selection clipboard 2>/dev/null || echo "${escaped}" | xsel -b 2>/dev/null || echo "${escaped}" | wl-copy 2>/dev/null`
+        );
       }
 
       const isVerified = await clipboardWriteTool.verify!(input, { success: true, verified: false });

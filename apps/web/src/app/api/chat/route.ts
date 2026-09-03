@@ -22,9 +22,9 @@ const cancelledTasks = new Set<string>();
 // Expose the set so the cancel endpoint can register a cancellation signal
 export { cancelledTasks };
 
-// Helper: execute a plan with one-shot recovery on step failure
-async function executePlanWithRecovery(
-  steps: PlannedAction[],
+// Autonomous ReAct Execution Loop: Executes steps, feeds observations back to AI, and executes follow-ups
+async function executeAutonomousReActLoop(
+  initialSteps: PlannedAction[],
   taskId: string,
   gateway: ExecutionGateway,
   provider: GeminiProvider,
@@ -35,101 +35,118 @@ async function executePlanWithRecovery(
   allSuccess: boolean;
   recoveryAttempted: boolean;
   recoveryMessage?: string;
+  finalMessage?: string;
 }> {
   const results: Array<{ toolId: string; success: boolean; data?: any; error?: string; verified: boolean }> = [];
+  let currentSteps = [...initialSteps];
+  let iteration = 0;
+  const maxIterations = 3;
   let allSuccess = true;
   let recoveryAttempted = false;
   let recoveryMessage: string | undefined;
+  let finalMessage: string | undefined;
 
-  for (const step of steps) {
-    // Check if task was cancelled mid-execution
-    if (cancelledTasks.has(taskId)) {
-      cancelledTasks.delete(taskId);
-      return { results, allSuccess: false, recoveryAttempted, recoveryMessage: "🛑 Stopped by user." };
-    }
+  while (currentSteps.length > 0 && iteration < maxIterations) {
+    iteration++;
 
-    const result = await gateway.executeAction(step, { taskId });
-
-    results.push({
-      toolId: step.toolId,
-      success: result.success,
-      data: result.data,
-      error: result.error,
-      verified: result.verified,
-    });
-
-    if (!result.success) {
-      allSuccess = false;
-
-      // ─── ONE-SHOT RECOVERY: Ask Gemini to reformulate with the error context ───
-      if (!recoveryAttempted) {
-        recoveryAttempted = true;
-        try {
-          const errorContext = `Previous attempt at '${step.toolId}' failed with error: "${result.error}". Please suggest an alternative approach using available tools.`;
-
-          const recoveryDecision = await provider.decide({
-            systemPolicy,
-            availableTools: allTools.map((t) => ({
-              id: t.id,
-              name: t.name,
-              description: t.description,
-              riskLevel: t.riskLevel,
-              inputSchema: t.description,
-            })),
-            conversationContext: [
-              ...conversationContext,
-              { role: "assistant", content: errorContext },
-            ],
-            userMessage: originalUserMessage,
-          });
-
-          if (recoveryDecision.type === "plan") {
-            // Check recovery plan doesn't also require confirmation
-            const recoveryNeedsConfirmation = recoveryDecision.plan.steps.some(
-              (s) => PolicyEngine.evaluate(s).requiresConfirmation
-            );
-
-            if (!recoveryNeedsConfirmation) {
-              // Execute the recovery plan steps
-              for (const recoveryStep of recoveryDecision.plan.steps) {
-                if (cancelledTasks.has(taskId)) break;
-                const recoveryResult = await gateway.executeAction(recoveryStep, { taskId });
-                results.push({
-                  toolId: `[recovery] ${recoveryStep.toolId}`,
-                  success: recoveryResult.success,
-                  data: recoveryResult.data,
-                  error: recoveryResult.error,
-                  verified: recoveryResult.verified,
-                });
-                if (recoveryResult.success) {
-                  allSuccess = true; // Recovery succeeded
-                  recoveryMessage = `Auto-recovered using alternative: \`${recoveryStep.toolId}\``;
-                }
-              }
-            } else {
-              recoveryMessage = `Recovery plan requires confirmation. Cannot auto-recover.`;
-            }
-          } else if (recoveryDecision.type === "respond") {
-            recoveryMessage = recoveryDecision.message;
-          }
-        } catch (_recoveryErr) {
-          // Recovery itself failed — continue with original failure
-        }
+    for (const step of currentSteps) {
+      if (cancelledTasks.has(taskId)) {
+        cancelledTasks.delete(taskId);
+        return { results, allSuccess: false, recoveryAttempted, recoveryMessage: "🛑 Stopped by user." };
       }
 
-      // If we couldn't recover, stop executing further steps
-      if (!allSuccess) break;
+      console.log(`[exec] Iteration ${iteration} Step ${results.length + 1}: ${step.toolId} (risk: ${step.riskLevel})`);
+      const stepStart = Date.now();
+      const result = await gateway.executeAction(step, { taskId });
+      console.log(`[exec] Step ${step.toolId}: ${result.success ? "✅ success" : "❌ failed"} (${Date.now() - stepStart}ms)`);
+
+      results.push({
+        toolId: step.toolId,
+        success: result.success,
+        data: result.data,
+        error: result.error,
+        verified: result.verified,
+      });
+
+      if (!result.success) {
+        allSuccess = false;
+        break;
+      }
+    }
+
+    // If steps completed, determine if further autonomous follow-up is needed
+    // Filesystem listings, screenshots, clipboard reads, process lists, and terminal commands are complete in 1 iteration!
+    const lastResult = results[results.length - 1];
+    const isMultiStepBrowserTask =
+      (lastResult?.toolId === "browser.navigate" || lastResult?.toolId === "browser.read") &&
+      (originalUserMessage.toLowerCase().includes("register") ||
+        originalUserMessage.toLowerCase().includes("login") ||
+        originalUserMessage.toLowerCase().includes("fill") ||
+        originalUserMessage.toLowerCase().includes("click") ||
+        originalUserMessage.toLowerCase().includes("submit") ||
+        originalUserMessage.toLowerCase().includes("search"));
+
+    if (!isMultiStepBrowserTask) {
+      break; // Task is complete! Do not repeat execution!
+    }
+
+    // Feed observation back to AI to determine next action
+    try {
+      const observationSummary = `Observation from '${lastResult.toolId}': ${JSON.stringify(lastResult.data || {}).slice(0, 1500)}`;
+      const nextDecision = await provider.decide({
+        systemPolicy,
+        availableTools: allTools.map((t) => ({
+          id: t.id,
+          name: t.name,
+          description: t.description,
+          riskLevel: t.riskLevel,
+          inputSchema: t.description,
+        })),
+        conversationContext: [
+          ...conversationContext,
+          { role: "assistant", content: `Executed ${lastResult.toolId}. Result: ${observationSummary}` },
+        ],
+        userMessage: `Observation: ${observationSummary}. Original goal: "${originalUserMessage}". What is the next form fill or click action required? If finished, return type: "respond".`,
+      });
+
+      if (nextDecision.type === "plan" && nextDecision.plan?.steps?.length > 0) {
+        // Prevent re-executing identical steps
+        const newSteps = nextDecision.plan.steps.filter(
+          (ns) => !results.some((r) => r.toolId === ns.toolId)
+        );
+        if (newSteps.length === 0) break;
+
+        const needsConfirmation = newSteps.some(
+          (s) => PolicyEngine.evaluate(s).requiresConfirmation
+        );
+        if (needsConfirmation) {
+          break;
+        }
+        currentSteps = newSteps;
+        console.log(`[exec] ReAct next steps planned (${currentSteps.length} steps):`, currentSteps.map((s) => s.toolId));
+      } else if (nextDecision.type === "respond") {
+        finalMessage = nextDecision.message;
+        break;
+      } else {
+        break;
+      }
+    } catch (e) {
+      console.warn("[exec] ReAct loop check encountered error, finishing:", e);
+      break;
     }
   }
 
-  return { results, allSuccess, recoveryAttempted, recoveryMessage };
+  return { results, allSuccess, recoveryAttempted, recoveryMessage, finalMessage };
 }
 
 export async function POST(req: Request) {
+  const startTime = Date.now();
   try {
     const { conversationId: inputConvoId, message } = await req.json();
+    console.log(`[chat] ← Received message (${message?.length || 0} chars): "${(message || "").slice(0, 80)}..."`);
 
     if (!message || typeof message !== "string") {
+      console.warn("[chat] Rejected: empty or non-string message");
       return NextResponse.json({ success: false, error: "Message is required" }, { status: 400 });
     }
 
@@ -168,6 +185,7 @@ export async function POST(req: Request) {
       userMessage: message,
     });
 
+    console.log(`[chat] AI decision type: ${decision.type}`, decision.type === "plan" ? `goal="${decision.plan?.goal}" steps=${decision.plan?.steps?.length}` : "");
     let assistantResponseText = "";
     let pendingTaskId: string | undefined;
     let results: Array<{ toolId: string; success: boolean; data?: any; error?: string; verified: boolean }> = [];
@@ -205,7 +223,7 @@ export async function POST(req: Request) {
         });
 
         const gateway = new ExecutionGateway();
-        const executionResult = await executePlanWithRecovery(
+        const executionResult = await executeAutonomousReActLoop(
           decision.plan.steps,
           task.id,
           gateway,
@@ -221,54 +239,121 @@ export async function POST(req: Request) {
           data: { status: executionResult.allSuccess ? "completed" : "failed" },
         });
 
+        // User-friendly summaries (no technical tool IDs shown to user)
         const formatToolSummary = (r: { toolId: string; verified: boolean; data?: any }) => {
           const toolId = r.toolId.replace(/^\[recovery\]\s*/, "");
           const data = r.data || {};
 
           if (toolId === "process.list") {
             const total = data.total || data.processes?.length || 0;
-            const topApps = (data.processes || []).slice(0, 5).map((p: any) => p.name).filter(Boolean).join(", ");
-            return ` - \`process.list\`: ✅ Listed **${total} active processes** (${topApps}...)`;
+            return `- ✅ Found **${total} active processes** running on your computer`;
+          }
+
+          if (toolId === "process.stop") {
+            return `- ✅ Terminated process **${data.name || `PID ${data.pid}`}**`;
           }
 
           if (toolId === "filesystem.list") {
             const total = data.total || data.files?.length || 0;
-            const pathName = data.path || "directory";
-            return ` - \`filesystem.list\`: ✅ Listed **${total} items** in \`${pathName}\``;
+            const pathName = data.path || "the folder";
+            return `- ✅ Found **${total} items** in **${pathName}**`;
+          }
+
+          if (toolId === "filesystem.create_directory") {
+            return `- ✅ Created folder **${data.path || "new directory"}**`;
+          }
+
+          if (toolId === "filesystem.write") {
+            return `- ✅ Saved file **${data.path || "target file"}**`;
+          }
+
+          if (toolId === "filesystem.delete") {
+            return `- ✅ Deleted **${data.path || "target path"}**`;
+          }
+
+          if (toolId === "filesystem.copy") {
+            return `- ✅ Copied to **${data.destination || "destination"}**`;
+          }
+
+          if (toolId === "filesystem.move" || toolId === "filesystem.rename") {
+            return `- ✅ Moved/Renamed to **${data.destination || data.newPath || "destination"}**`;
           }
 
           if (toolId === "screen.capture") {
-            return ` - \`screen.capture\`: ✅ Desktop screenshot captured (${data.sizeBytes ? Math.round(data.sizeBytes / 1024) + " KB" : "saved"}) at \`${data.path}\``;
+            return `- ✅ **Screenshot captured** successfully (${data.sizeBytes ? Math.round(data.sizeBytes / 1024) + " KB" : "saved"})`;
           }
 
           if (toolId === "clipboard.read") {
-            return ` - \`clipboard.read\`: ✅ Clipboard content: "${data.text || ""}"`;
+            const preview = (data.text || "").slice(0, 100);
+            return `- ✅ **Clipboard content**: "${preview}"`;
+          }
+
+          if (toolId === "clipboard.write") {
+            return `- ✅ Copied text to system clipboard`;
           }
 
           if (toolId === "application.open") {
-            return ` - \`application.open\`: ✅ Launched application **${data.application || "app"}**`;
+            return `- ✅ Launched **${data.application || "the application"}**`;
           }
 
-          return ` - \`${r.toolId}\`: ${r.verified ? "✅ Verified" : "⚠️ Executed"}`;
+          if (toolId === "terminal.execute") {
+            return `- ✅ Command executed: \`${data.command}\``;
+          }
+
+          if (toolId === "browser.open") {
+            return `- ✅ Opened **${data.url}** in your web browser`;
+          }
+
+          if (toolId === "browser.navigate") {
+            return `- ✅ Navigated to **${data.url || "webpage"}**`;
+          }
+
+          if (toolId === "browser.read") {
+            return `- ✅ Read page content from **${data.url || "webpage"}** (${data.length ? data.length + " characters" : "ready"})`;
+          }
+
+          if (toolId === "browser.fill_form") {
+            return `- ✅ Completed form entries on webpage`;
+          }
+
+          if (toolId === "browser.click") {
+            return `- ✅ Clicked element on webpage`;
+          }
+
+          if (toolId === "browser.screenshot") {
+            return `- ✅ Captured webpage screenshot`;
+          }
+
+          return `- ✅ Completed action successfully`;
         };
 
+        // Detailed server-side logging (for developers only)
+        console.log("[chat] Task execution results:", JSON.stringify(results.map(r => ({
+          toolId: r.toolId,
+          success: r.success,
+          verified: r.verified,
+          dataKeys: r.data ? Object.keys(r.data) : [],
+          error: r.error || null,
+        })), null, 2));
+
         if (executionResult.recoveryMessage && executionResult.recoveryAttempted) {
-          // Prefix with recovery notice
           const recoveryNote = executionResult.allSuccess
-            ? `♻️ **Auto-recovered**: ${executionResult.recoveryMessage}\n\n`
-            : `⚠️ **Recovery attempted**: ${executionResult.recoveryMessage}\n\n`;
+            ? `♻️ **Auto-recovered** and completed successfully.\n\n`
+            : `⚠️ Recovery was attempted but the task could not be completed.\n\n`;
 
           assistantResponseText = recoveryNote + (executionResult.allSuccess
-            ? `Completed task: **${decision.plan.goal}**\n\n` +
+            ? `**${decision.plan.goal}**\n\n` +
               results.map(formatToolSummary).join("\n")
-            : `Task failed after recovery attempt for **${decision.plan.goal}**.`);
+            : `Could not complete: **${decision.plan.goal}**. Please try again or rephrase your request.`);
 
         } else if (executionResult.allSuccess) {
-          assistantResponseText = `Completed task: **${decision.plan.goal}**\n\n` +
+          assistantResponseText = `**${decision.plan.goal}**\n\n` +
             results.map(formatToolSummary).join("\n");
         } else {
           const failedStep = results.find((r) => !r.success);
-          assistantResponseText = `Task failed during **${failedStep?.toolId || "execution"}**: ${failedStep?.error || "Unknown error"}`;
+          const userError = (failedStep?.error || "").replace(/Error:\s*/gi, "");
+          assistantResponseText = `Sorry, I couldn't complete that task. ${userError || "Something went wrong — please try again."}`;
+          console.error("[chat] Task execution failed:", failedStep?.toolId, failedStep?.error);
         }
       }
     }
@@ -288,7 +373,12 @@ export async function POST(req: Request) {
     });
 
   } catch (err: any) {
-    console.error("Error in /api/chat:", err);
-    return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 500 });
+    const elapsed = Date.now() - startTime;
+    console.error(`[chat] ❌ Unhandled error after ${elapsed}ms:`, err?.stack || err?.message || err);
+    // User-friendly error — no stack traces or technical details
+    return NextResponse.json({
+      success: false,
+      error: "Something went wrong while processing your request. Please try again.",
+    }, { status: 500 });
   }
 }

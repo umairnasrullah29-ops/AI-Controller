@@ -40,9 +40,20 @@ export const openApplicationTool: ToolDefinition<OpenApplicationInput> = {
           launchpad: ["shell:AppsFolder", "explorer.exe"],
           settings: ["ms-settings:"],
           paint: ["mspaint.exe"],
+          "control panel": ["control.exe"],
+          control: ["control.exe"],
+          "task manager": ["taskmgr.exe"],
+          taskmgr: ["taskmgr.exe"],
+          cmd: ["cmd.exe"],
+          terminal: ["wt.exe", "cmd.exe", "powershell.exe"],
+          "command prompt": ["cmd.exe"],
+          explorer: ["explorer.exe"],
+          "file explorer": ["explorer.exe"],
+          "device manager": ["devmgmt.msc"],
+          services: ["services.msc"],
         };
 
-        const lower = sanitizedName.toLowerCase();
+        const lower = nameClean.toLowerCase();
         const candidates = aliasMap[lower] || [sanitizedName, `${sanitizedName}.exe`, `${sanitizedName}:`];
 
         let lastErr: Error | null = null;

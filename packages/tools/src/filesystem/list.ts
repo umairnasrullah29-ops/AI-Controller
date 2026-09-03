@@ -11,27 +11,84 @@ export const ListFilesInputSchema = z.object({
 export type ListFilesInput = z.infer<typeof ListFilesInputSchema>;
 
 import * as fsSync from "fs";
+import { execSync } from "child_process";
+
+let cachedShellFolders: { desktop: string; downloads: string; documents: string } | null = null;
+
+export function getShellFolders(): { desktop: string; downloads: string; documents: string } {
+  if (cachedShellFolders) return cachedShellFolders;
+
+  const home = os.homedir();
+  const folders = {
+    desktop: path.join(home, "Desktop"),
+    downloads: path.join(home, "Downloads"),
+    documents: path.join(home, "Documents"),
+  };
+
+  if (process.platform === "win32") {
+    try {
+      const out = execSync(
+        'reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders"',
+        { encoding: "utf8", timeout: 2000, windowsHide: true }
+      );
+      for (const line of out.split("\n")) {
+        const desktopMatch = line.match(/\s+Desktop\s+REG_[A-Z_]+\s+(.+)/i);
+        if (desktopMatch) {
+          const raw = desktopMatch[1].trim().replace(/%USERPROFILE%/i, home);
+          if (fsSync.existsSync(raw)) folders.desktop = raw;
+        }
+        const personalMatch = line.match(/\s+Personal\s+REG_[A-Z_]+\s+(.+)/i);
+        if (personalMatch) {
+          const raw = personalMatch[1].trim().replace(/%USERPROFILE%/i, home);
+          if (fsSync.existsSync(raw)) folders.documents = raw;
+        }
+        const dlMatch = line.match(/\s+\{374DE290-123F-4565-9164-39C4925E467B\}\s+REG_[A-Z_]+\s+(.+)/i);
+        if (dlMatch) {
+          const raw = dlMatch[1].trim().replace(/%USERPROFILE%/i, home);
+          if (fsSync.existsSync(raw)) folders.downloads = raw;
+        }
+      }
+    } catch {
+      // Fallback: Check OneDrive directories dynamically
+      const oneDriveDocsDesktop = path.join(home, "OneDrive", "Documents", "Desktop");
+      const oneDriveDesktop = path.join(home, "OneDrive", "Desktop");
+      if (fsSync.existsSync(oneDriveDocsDesktop)) folders.desktop = oneDriveDocsDesktop;
+      else if (fsSync.existsSync(oneDriveDesktop)) folders.desktop = oneDriveDesktop;
+    }
+  }
+
+  cachedShellFolders = folders;
+  return folders;
+}
 
 export function resolveUserPath(inputPath: string): string {
   let target = inputPath.trim();
   const home = os.homedir();
+  const shell = getShellFolders();
 
-  const checkFolder = (folderName: string): string => {
-    const std = path.join(home, folderName);
-    if (fsSync.existsSync(std)) return std;
-    const oneDrive = path.join(home, "OneDrive", folderName);
-    if (fsSync.existsSync(oneDrive)) return oneDrive;
-    return std;
-  };
+  const norm = target.replace(/\\/g, "/");
+  const lower = norm.toLowerCase();
 
   if (target.startsWith("~")) {
     target = path.join(home, target.slice(1));
-  } else if (target.toLowerCase() === "downloads") {
-    target = checkFolder("Downloads");
-  } else if (target.toLowerCase() === "desktop") {
-    target = checkFolder("Desktop");
-  } else if (target.toLowerCase() === "documents") {
-    target = checkFolder("Documents");
+  } else if (lower === "desktop" || lower === "my desktop" || lower === "the desktop") {
+    target = shell.desktop;
+  } else if (lower.startsWith("desktop/")) {
+    target = path.join(shell.desktop, norm.slice(8));
+  } else if (lower === "downloads" || lower === "my downloads" || lower === "the downloads") {
+    target = shell.downloads;
+  } else if (lower.startsWith("downloads/")) {
+    target = path.join(shell.downloads, norm.slice(10));
+  } else if (lower === "documents" || lower === "my documents" || lower === "the documents") {
+    target = shell.documents;
+  } else if (lower.startsWith("documents/")) {
+    target = path.join(shell.documents, norm.slice(10));
+  } else if (!path.isAbsolute(target)) {
+    // Check if relative path exists on Desktop or in current dir
+    const desktopCandidate = path.join(shell.desktop, target);
+    if (fsSync.existsSync(desktopCandidate)) {
+      target = desktopCandidate;
+    }
   }
 
   return path.resolve(target);

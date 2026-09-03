@@ -59,6 +59,201 @@ interface UiAlert {
   message: string;
 }
 
+/* ──────────────────────────────────────────────────────────
+ * MarkdownRenderer – lightweight inline markdown → React
+ * Supports: **bold**, *italic*, `code`, [links](url),
+ *           - bullet lists, numbered lists, ### headings,
+ *           ```code blocks```, and horizontal rules (---)
+ * ────────────────────────────────────────────────────────── */
+function MarkdownRenderer({ text }: { text: string }) {
+  if (!text) return null;
+
+  // Split into lines for block-level parsing
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // --- Fenced code blocks (```...```) ---
+    if (line.trimStart().startsWith("```")) {
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trimStart().startsWith("```")) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing ```
+      elements.push(
+        <pre
+          key={key++}
+          className="bg-[#0a0f1d] border border-slate-800 rounded-lg p-3 my-2 overflow-x-auto text-[12px] font-mono text-cyan-300 leading-relaxed"
+        >
+          <code>{codeLines.join("\n")}</code>
+        </pre>
+      );
+      continue;
+    }
+
+    // --- Horizontal rule (--- or *** or ___) ---
+    if (/^(\s*[-*_]\s*){3,}$/.test(line)) {
+      elements.push(<hr key={key++} className="border-slate-700/60 my-3" />);
+      i++;
+      continue;
+    }
+
+    // --- Headings (### / ## / #) ---
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const headingText = headingMatch[2];
+      const hClass =
+        level === 1
+          ? "text-base font-bold text-white mt-3 mb-1.5"
+          : level === 2
+          ? "text-[15px] font-bold text-slate-100 mt-2.5 mb-1"
+          : "text-sm font-semibold text-slate-200 mt-2 mb-1";
+      elements.push(
+        <p key={key++} className={hClass}>
+          {renderInline(headingText)}
+        </p>
+      );
+      i++;
+      continue;
+    }
+
+    // --- Bullet list items (- or * or •) ---
+    if (/^\s*[-*•]\s+/.test(line)) {
+      const listItems: React.ReactNode[] = [];
+      while (i < lines.length && /^\s*[-*•]\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*[-*•]\s+/, "");
+        listItems.push(
+          <li key={key++} className="flex items-start gap-2 py-0.5">
+            <span className="text-cyan-500 mt-[3px] text-[8px] shrink-0">●</span>
+            <span>{renderInline(itemText)}</span>
+          </li>
+        );
+        i++;
+      }
+      elements.push(
+        <ul key={key++} className="my-1.5 space-y-0.5 text-sm">
+          {listItems}
+        </ul>
+      );
+      continue;
+    }
+
+    // --- Numbered list items (1. 2. 3.) ---
+    if (/^\s*\d+[.)]\s+/.test(line)) {
+      const listItems: React.ReactNode[] = [];
+      let num = 1;
+      while (i < lines.length && /^\s*\d+[.)]\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*\d+[.)]\s+/, "");
+        listItems.push(
+          <li key={key++} className="flex items-start gap-2 py-0.5">
+            <span className="text-cyan-400 font-bold text-xs min-w-[18px] mt-[1px] shrink-0">{num}.</span>
+            <span>{renderInline(itemText)}</span>
+          </li>
+        );
+        num++;
+        i++;
+      }
+      elements.push(
+        <ol key={key++} className="my-1.5 space-y-0.5 text-sm">
+          {listItems}
+        </ol>
+      );
+      continue;
+    }
+
+    // --- Empty line → spacer ---
+    if (line.trim() === "") {
+      elements.push(<div key={key++} className="h-1.5" />);
+      i++;
+      continue;
+    }
+
+    // --- Regular paragraph ---
+    elements.push(
+      <p key={key++} className="text-sm leading-relaxed my-0.5">
+        {renderInline(line)}
+      </p>
+    );
+    i++;
+  }
+
+  return <div className="space-y-0.5">{elements}</div>;
+}
+
+/** Render inline markdown: **bold**, *italic*, `code`, [link](url) */
+function renderInline(text: string): React.ReactNode {
+  // Match patterns: **bold**, *italic*, `code`, [text](url)
+  const parts: React.ReactNode[] = [];
+  // Combined regex for inline patterns
+  const regex = /(\*\*(.+?)\*\*)|(\*(.+?)\*)|(`(.+?)`)|(\[(.+?)\]\((.+?)\))/g;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let partKey = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Push preceding plain text
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    if (match[1]) {
+      // **bold**
+      parts.push(
+        <strong key={partKey++} className="font-bold text-white">
+          {match[2]}
+        </strong>
+      );
+    } else if (match[3]) {
+      // *italic*
+      parts.push(
+        <em key={partKey++} className="italic text-slate-300">
+          {match[4]}
+        </em>
+      );
+    } else if (match[5]) {
+      // `code`
+      parts.push(
+        <code
+          key={partKey++}
+          className="bg-slate-800/80 text-cyan-300 px-1.5 py-0.5 rounded text-[12px] font-mono border border-slate-700/50"
+        >
+          {match[6]}
+        </code>
+      );
+    } else if (match[7]) {
+      // [text](url)
+      parts.push(
+        <a
+          key={partKey++}
+          href={match[9]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-cyan-400 underline underline-offset-2 hover:text-cyan-300 transition-colors"
+        >
+          {match[8]}
+        </a>
+      );
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Push remaining plain text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length === 1 ? parts[0] : <>{parts}</>;
+}
+
 function StepDataCard({ toolId, data }: { toolId: string; data: any }) {
   const [search, setSearch] = useState("");
   if (!data) return null;
@@ -166,22 +361,37 @@ function StepDataCard({ toolId, data }: { toolId: string; data: any }) {
   }
 
   // 3. Screen Capture Preview Card
-  if (cleanId === "screen.capture" && data.path) {
+  if (cleanId === "screen.capture" && (data.path || data.imageUri)) {
     return (
-      <div className="mt-2.5 bg-[#0a0f1d] border border-slate-800/90 rounded-xl p-3 space-y-2 font-sans">
-        <div className="flex items-center space-x-2 text-pink-400 font-semibold text-xs">
-          <Camera className="w-4 h-4" />
-          <span>Desktop Screenshot Captured</span>
+      <div className="mt-2.5 bg-[#0a0f1d] border border-slate-800/90 rounded-xl p-3 space-y-2.5 font-sans">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2 text-pink-400 font-semibold text-xs">
+            <Camera className="w-4 h-4" />
+            <span>Desktop Screenshot Captured</span>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+            {data.sizeBytes ? `${Math.round(data.sizeBytes / 1024)} KB` : "PNG"} • {data.backend || "GDI"}
+          </span>
         </div>
+
+        {/* Live Image Preview Render */}
+        {data.imageUri && (
+          <div className="overflow-hidden rounded-lg border border-slate-800 bg-black/40">
+            <img
+              src={data.imageUri}
+              alt="Desktop Screenshot"
+              className="w-full max-h-80 object-contain hover:scale-[1.02] transition-transform duration-200 cursor-pointer"
+              onClick={() => window.open(data.imageUri, "_blank")}
+              title="Click to view full size"
+            />
+          </div>
+        )}
+
         <div className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] space-y-1 text-slate-300">
-          <p><span className="text-slate-500">File Path:</span> {data.path}</p>
+          <p className="truncate"><span className="text-slate-500">File Path:</span> {data.path}</p>
           <p>
-            <span className="text-slate-500">Size:</span> {data.sizeBytes ? `${Math.round(data.sizeBytes / 1024)} KB` : "N/A"} •{" "}
-            <span className="text-slate-500">Duration:</span> {data.durationMs}ms
-          </p>
-          <p>
-            <span className="text-slate-500">Backend:</span>{" "}
-            <span className="text-cyan-400 font-semibold">{data.backend}</span>
+            <span className="text-slate-500">Captured:</span> {new Date(data.capturedAt || Date.now()).toLocaleTimeString()} •{" "}
+            <span className="text-slate-500">Latency:</span> {data.durationMs}ms
           </p>
         </div>
       </div>
@@ -677,7 +887,11 @@ export default function ChatPage() {
                       : "bg-[#131b2e] border border-slate-800 text-slate-200 rounded-bl-none shadow-md"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  {msg.role === "assistant" ? (
+                    <MarkdownRenderer text={msg.content} />
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  )}
 
                   {/* Text to Speech Button for Assistant Messages */}
                   {msg.role === "assistant" && msg.content && (
@@ -696,30 +910,51 @@ export default function ChatPage() {
 
                   {/* Confirmation Modal / Card for High-Risk Actions */}
                   {msg.pendingConfirmation && (
-                    <div className="mt-4 p-4 rounded-xl bg-amber-950/40 border border-amber-500/40 space-y-3">
-                      <div className="flex items-center space-x-2 text-amber-400 font-semibold text-xs uppercase tracking-wider">
-                        <ShieldAlert className="w-4 h-4" />
-                        <span>Security Authorization Required</span>
+                    <div className="mt-4 p-4 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-3.5 shadow-xl shadow-amber-950/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-2 text-amber-400 font-semibold text-xs uppercase tracking-wider">
+                          <ShieldAlert className="w-4 h-4 text-amber-400" />
+                          <span>Security Authorization Required</span>
+                        </div>
+                        <span className="px-2 py-0.5 text-[10px] rounded-full uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono font-bold">
+                          Action Blocked by Policy
+                        </span>
                       </div>
+
                       <p className="text-xs text-slate-300">
-                        The requested action requires explicit confirmation before executing on the OS:
+                        This action requires explicit authorization before making changes to your computer:
                       </p>
 
-                      <div className="space-y-1.5 font-mono text-xs">
+                      <div className="space-y-2 text-xs">
                         {msg.pendingConfirmation.actions.map((act, idx) => (
                           <div
                             key={idx}
-                            className="bg-slate-900/90 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center"
+                            className="bg-slate-900/90 p-3 rounded-lg border border-slate-800 flex items-center justify-between"
                           >
-                            <span className="text-amber-300 font-bold">{act.toolId}</span>
-                            <span className="px-1.5 py-0.5 text-[10px] rounded uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold">
+                            <div className="space-y-0.5">
+                              <span className="text-amber-300 font-bold block">
+                                {act.toolId === "filesystem.delete"
+                                  ? `🗑️ Delete: ${act.args?.path || "target path"}`
+                                  : act.toolId === "process.stop"
+                                  ? `🛑 Stop Process: PID ${act.args?.pid}`
+                                  : act.toolId === "filesystem.write"
+                                  ? `✏️ Edit File: ${act.args?.path || "target file"}`
+                                  : act.toolId}
+                              </span>
+                              {act.args && typeof act.args === "object" && Object.keys(act.args).length > 0 && (
+                                <p className="text-[11px] font-mono text-slate-400">
+                                  {JSON.stringify(act.args)}
+                                </p>
+                              )}
+                            </div>
+                            <span className="px-2 py-0.5 text-[10px] rounded uppercase bg-rose-500/20 text-rose-300 border border-rose-500/40 font-semibold shrink-0 ml-2">
                               {act.riskLevel || "high"}
                             </span>
                           </div>
                         ))}
                       </div>
 
-                      <div className="flex items-center space-x-2 pt-2">
+                      <div className="flex items-center space-x-2 pt-1">
                         <button
                           onClick={() =>
                             handleApproveAction(
@@ -728,17 +963,19 @@ export default function ChatPage() {
                               msg.pendingConfirmation!.actions
                             )
                           }
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-2 rounded-lg text-xs transition-colors shadow-lg"
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl text-xs transition-all shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-1.5"
                         >
-                          ✓ Allow & Execute
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Allow & Execute
                         </button>
                         <button
                           onClick={() =>
                             handleCancelAction(msg.id, msg.pendingConfirmation!.taskId)
                           }
-                          className="flex-1 bg-rose-600/80 hover:bg-rose-600 text-white font-medium py-2 rounded-lg text-xs transition-colors"
+                          className="flex-1 bg-rose-600/80 hover:bg-rose-600 text-white font-semibold py-2.5 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5"
                         >
-                          ✕ Deny / Cancel
+                          <XCircle className="w-3.5 h-3.5" />
+                          Deny / Cancel
                         </button>
                       </div>
                     </div>
@@ -820,58 +1057,74 @@ export default function ChatPage() {
             <button
               onClick={() => handleSend("List the files in my Downloads folder")}
               disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-cyan-500/40"
             >
               <ListFilter className="w-3.5 h-3.5 text-cyan-400" />
-              <span>List Downloads folder</span>
+              <span>Downloads</span>
             </button>
             <button
               onClick={() => handleSend("List the active running processes on my computer")}
               disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-indigo-500/40"
             >
               <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span>List running processes</span>
-            </button>
-            <button
-              onClick={() => handleSend("Launch Notepad")}
-              disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
-            >
-              <AppWindow className="w-3.5 h-3.5 text-amber-400" />
-              <span>Launch Notepad</span>
-            </button>
-            <button
-              onClick={() => handleSend("Create a folder called Test on my Desktop")}
-              disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
-            >
-              <FolderPlus className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Create Test folder</span>
+              <span>Processes</span>
             </button>
             <button
               onClick={() => handleSend("Take a screenshot of my desktop")}
               disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-pink-500/40"
             >
               <Camera className="w-3.5 h-3.5 text-pink-400" />
-              <span>Capture Screen</span>
+              <span>Screenshot</span>
             </button>
             <button
               onClick={() => handleSend("Read text from my clipboard")}
               disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-purple-500/40"
             >
               <Copy className="w-3.5 h-3.5 text-purple-400" />
-              <span>Read Clipboard</span>
+              <span>Clipboard</span>
+            </button>
+            <button
+              onClick={() => handleSend("Launch Notepad")}
+              disabled={loading}
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-amber-500/40"
+            >
+              <AppWindow className="w-3.5 h-3.5 text-amber-400" />
+              <span>Notepad</span>
+            </button>
+            <button
+              onClick={() => handleSend("Open WhatsApp")}
+              disabled={loading}
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-emerald-500/40"
+            >
+              <AppWindow className="w-3.5 h-3.5 text-emerald-400" />
+              <span>WhatsApp</span>
+            </button>
+            <button
+              onClick={() => handleSend("Open Windows Settings")}
+              disabled={loading}
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-cyan-500/40"
+            >
+              <AppWindow className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Settings</span>
             </button>
             <button
               onClick={() => handleSend("Check git version in terminal")}
               disabled={loading}
-              className="flex items-center space-x-1.5 text-xs bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all"
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-yellow-500/40"
             >
               <Code className="w-3.5 h-3.5 text-yellow-400" />
               <span>Git Version</span>
+            </button>
+            <button
+              onClick={() => handleSend("Read and summarize the webpage https://example.com")}
+              disabled={loading}
+              className="flex items-center space-x-1.5 text-xs bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 px-3 py-1.5 rounded-full transition-all hover:border-blue-500/40"
+            >
+              <Globe className="w-3.5 h-3.5 text-blue-400" />
+              <span>Read Webpage</span>
             </button>
           </div>
 

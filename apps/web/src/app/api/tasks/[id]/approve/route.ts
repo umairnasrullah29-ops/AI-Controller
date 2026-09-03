@@ -55,12 +55,24 @@ export async function POST(
       data: { status: allSuccess ? "completed" : "failed" },
     });
 
+    const formatApprovalSummary = (r: { toolId: string; verified: boolean; data?: any }) => {
+      const data = r.data || {};
+      if (r.toolId === "filesystem.delete") {
+        return `- ✅ Permanently deleted **${data.path || "the file/folder"}**`;
+      }
+      if (r.toolId === "process.stop") {
+        return `- ✅ Terminated process **${data.name || `PID ${data.pid}`}**`;
+      }
+      if (r.toolId === "filesystem.write") {
+        return `- ✅ Updated file **${data.path || "target file"}**`;
+      }
+      return `- ✅ Executed action successfully`;
+    };
+
     const summaryText = allSuccess
-      ? `User approved execution:\n\n` +
-        results
-          .map((r) => ` - \`${r.toolId}\`: ${r.verified ? "✅ Verified" : "⚠️ Executed"} ${r.data ? JSON.stringify(r.data) : ""}`)
-          .join("\n")
-      : `Action failed during execution: ${results.find((r) => !r.success)?.error || "Error"}`;
+      ? `**Approved Action Completed Successfully**\n\n` +
+        results.map(formatApprovalSummary).join("\n")
+      : `Sorry, the action failed during execution: ${results.find((r) => !r.success)?.error?.replace(/Error:\s*/gi, "") || "Something went wrong"}`;
 
     await db.message.create({
       data: {

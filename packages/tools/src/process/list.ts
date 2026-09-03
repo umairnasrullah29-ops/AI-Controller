@@ -59,8 +59,36 @@ export const listProcessesTool: ToolDefinition<ListProcessesInput> = {
       }
 
       // ─── Linux / macOS ───────────────────────────────────────────────────
-      const { stdout } = await execAsync("ps -eo pid,comm,%mem,nlwp --sort=-%mem | head -n 100");
-      return { success: true, data: { raw: stdout, backend: "ps" }, verified: true };
+      const { stdout } = await execAsync(
+        process.platform === "darwin"
+          ? "ps -eo pid,comm,%mem"
+          : "ps -eo pid,comm,%mem --sort=-%mem 2>/dev/null || ps -eo pid,comm,%mem"
+      );
+      const lines = stdout.trim().split("\n").slice(1); // skip header
+      let processes = lines
+        .map((line) => {
+          const parts = line.trim().split(/\s+/);
+          const pid = parseInt(parts[0], 10) || 0;
+          const memUsage = (parts[parts.length - 1] || "0") + " %";
+          const name = parts.slice(1, parts.length - 1).join(" ") || "process";
+          return { name, pid, memUsage };
+        })
+        .filter((p) => p.name && p.pid > 0);
+
+      if (input.filter) {
+        const lower = input.filter.toLowerCase();
+        processes = processes.filter((p) => p.name.toLowerCase().includes(lower));
+      }
+
+      return {
+        success: true,
+        data: {
+          total: processes.length,
+          processes: processes.slice(0, 100),
+          backend: process.platform === "darwin" ? "ps-darwin" : "ps-linux",
+        },
+        verified: true,
+      };
 
     } catch (err: any) {
       return { success: false, error: err?.message || String(err), verified: false };

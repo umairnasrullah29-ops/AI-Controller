@@ -13,6 +13,7 @@ const ALLOWED_COMMANDS = new Set([
   "dir",
   "echo",
   "ipconfig",
+  "ifconfig",
   "ping",
   "systeminfo",
   "whoami",
@@ -22,6 +23,9 @@ const ALLOWED_COMMANDS = new Set([
   "cat",
   "hostname",
   "ver",
+  "uname",
+  "df",
+  "free",
 ]);
 
 export const TerminalExecuteInputSchema = z.object({
