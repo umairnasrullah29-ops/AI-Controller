@@ -6,7 +6,7 @@
 
 ## 🎯 Executive Summary & Purpose
 
-The **AI Local PC Controller** is an autonomous, local-first system designed to allow users to control their desktop OS (Windows/macOS/Linux) via natural language voice or text commands. It bridges high-level Reasoning LLMs (Google Gemini 3.6 Flash) with low-level System OS Operations without giving the LLM raw shell access.
+The **AI Local PC Controller** is an autonomous, local-first system designed to allow users to control their desktop OS (Windows/macOS/Linux) via natural language voice or text commands. It bridges high-level Reasoning LLMs (Google Gemini 1.5 / 2.0 Flash) with low-level System OS Operations without giving the LLM raw shell access.
 
 ### Core Philosophy
 > **"LLM ≠ Authority"**  
@@ -110,7 +110,15 @@ The **AI Local PC Controller** is an autonomous, local-first system designed to 
 - **What it is**: Node.js N-API C++ C-bindings compiled via `node-gyp`.
 - **How it's used**: Windows GDI `BitBlt` screen capture (<10ms) and `TlHelp32`/`PSAPI` process enumeration. Includes graceful fallback to CLI scripts when C++ build tools are absent.
 
-### 8. Speech AI Pipeline (Deepgram STT & TTS)
+### 9. One-Shot Error Auto-Recovery (`executePlanWithRecovery`)
+- **What it is**: An automated resilience mechanism that handles step execution failures mid-task.
+- **How it's used**: When a multi-step plan step fails (e.g. file lock or invalid path), `POST /api/chat` passes the error message back to Gemini in a recovery context. Gemini generates an alternative plan step (e.g., using a fallback tool) which is executed automatically without breaking the user session.
+
+### 10. Mid-Execution Task Cancellation (`cancelledTasks`)
+- **What it is**: A signal-based cancellation engine for multi-step task execution.
+- **How it's used**: When a user clicks **Stop Task** in the UI, `POST /api/tasks/cancel` registers the task ID in a global `cancelledTasks` Set. `executePlanWithRecovery` checks this set before executing each step and halts execution cleanly if flagged.
+
+### 11. Speech AI Pipeline (Deepgram STT & TTS)
 - **Speech-to-Text (STT)**: User holds mic -> Browser `MediaRecorder` encodes WebM audio -> `POST /api/voice/stt` sends buffer to Deepgram **Nova-2** -> Transcribed text returned to input box.
 - **Text-to-Speech (TTS)**: Assistant message rendered -> User clicks **Listen** -> `POST /api/voice/tts` requests audio stream from Deepgram **Aura** (`aura-asteria-en`) -> HTML5 Audio plays binary stream.
 
@@ -157,6 +165,14 @@ The **AI Local PC Controller** is an autonomous, local-first system designed to 
 ### Q5: How does secret scrubbing work in browser automation?
 > **Answer**:  
 > "In `session-manager.ts`, after Playwright extracts inner text from a rendered page, the text passes through a regular expression scrubber (`scrubSecrets()`). Regex patterns match Bearer tokens, API keys, basic authentication headers, passwords, and session cookies, replacing them with `[REDACTED]` before the content is passed back into the LLM context or written to audit logs."
+
+### Q6: How does the system handle errors during multi-step execution without crashing?
+> **Answer**:  
+> "We implement a **One-Shot Error Auto-Recovery** engine (`executePlanWithRecovery()`). If a plan step fails during execution, the system captures the specific error output and makes a high-priority sub-query to Gemini with the error context. Gemini formulates a replacement step using an alternative tool or path. If the recovery step succeeds, execution resumes automatically without prompting the user. If recovery fails, execution stops safely and reports the exact failure state."
+
+### Q7: How does mid-execution task cancellation work in an asynchronous server environment?
+> **Answer**:  
+> "When the user clicks the **Stop Task** button in the Web UI, an HTTP call is dispatched to `POST /api/tasks/cancel`. The backend adds the `taskId` to an in-memory `cancelledTasks` Set. The `executePlanWithRecovery()` loop checks this set prior to executing every individual tool step. If a cancellation flag is detected, the loop immediately terminates, marks the task as cancelled in the database, removes the task ID from the set, and returns a clean `🛑 Stopped by user` message to the UI."
 
 ---
 

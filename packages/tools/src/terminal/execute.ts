@@ -55,8 +55,8 @@ export const terminalExecuteTool: ToolDefinition<TerminalExecuteInput> = {
         };
       }
 
-      // Reject dangerous shell piping / chaining patterns
-      if (/[;&|<>`$]/.test(trimmed) && !trimmed.startsWith("echo")) {
+      // Reject dangerous shell piping / chaining patterns — no exceptions
+      if (/[;&|<>`$]/.test(trimmed)) {
         return {
           success: false,
           error: "Command chaining or redirection operators (;&|<>`) are restricted for security.",

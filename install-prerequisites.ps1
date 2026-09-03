@@ -84,3 +84,13 @@ if ((-not $nodeModulesExist) -or (-not $dbExists)) {
 Write-Host "`n==========================================================" -ForegroundColor Cyan
 Write-Host " STARTING APPLICATION..." -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
+
+# Launch the application
+try {
+    & npm start
+} catch {
+    Write-Host "`n   [-] Failed to start the application. Error: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "   [*] Try running: npm start  in the project folder." -ForegroundColor Yellow
+    pause
+    exit 1
+}

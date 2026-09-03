@@ -8,7 +8,7 @@ export class ExecutionGateway {
   private hostAgentSecret: string;
 
   constructor(
-    hostAgentUrl = process.env.HOST_AGENT_URL || "http://localhost:8765",
+    hostAgentUrl = process.env.HOST_AGENT_URL || "http://127.0.0.1:8765",
     hostAgentSecret = process.env.HOST_AGENT_SECRET || "super-secret-host-agent-key-change-in-prod-12345"
   ) {
     this.hostAgentUrl = hostAgentUrl;

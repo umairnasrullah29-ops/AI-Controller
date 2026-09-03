@@ -13,30 +13,15 @@ function setupDesktopIcon() {
   console.log("==========================================================\n");
 
   const projectDir = path.resolve(__dirname, "..");
-  const batPath = path.join(projectDir, "start-ai-pc.bat");
+  const batPath = path.join(projectDir, "install-and-run.bat");
 
-  // Ensure start-ai-pc.bat exists in project root
-  const batContent = `@echo off
-title AI Local PC Controller
-cd /d "%~dp0"
-
-echo ============================================================
-echo 🚀 Launching AI Local PC Controller (v2.0)
-echo ============================================================
-echo.
-echo  - Host Agent Gateway: http://127.0.0.1:8765
-echo  - Web Application UI: http://localhost:3001
-echo.
-echo Opening Web Interface in default browser...
-echo ============================================================
-echo.
-
-start "" powershell -NoProfile -Command "Start-Sleep -Seconds 2; Start-Process 'http://localhost:3001'"
-
-npm start
-`;
-  fs.writeFileSync(batPath, batContent);
-  console.log(`  ✅ Created launcher script at: ${batPath}`);
+  // Verify install-and-run.bat exists in project root (it should always be present)
+  if (!fs.existsSync(batPath)) {
+    console.warn(`  ⚠️  Could not find launcher script at: ${batPath}`);
+    console.warn(`  ⚠️  Desktop shortcut will point to a missing file.`);
+  } else {
+    console.log(`  ✅ Verified launcher script: ${batPath}`);
+  }
 
   if (process.platform === "win32") {
     try {
