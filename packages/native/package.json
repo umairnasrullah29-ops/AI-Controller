@@ -1,0 +1,21 @@
+{
+  "name": "@ai-pc/native",
+  "version": "1.0.0",
+  "description": "Native N-API C++ addon for ultra-low latency screen capture and process enumeration on Windows",
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "build:addon": "node -e \"require('fs').copyFileSync('binding.gyp.template', 'binding.gyp')\" && node-gyp rebuild",
+    "build:debug": "node-gyp rebuild --debug",
+    "clean": "node-gyp clean"
+  },
+  "dependencies": {
+    "node-addon-api": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "node-gyp": "^10.2.0",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "targets": [
+    {
+      "target_name": "ai_pc_native",
+      "cflags!": ["-fno-exceptions"],
+      "cflags_cc!": ["-fno-exceptions"],
+      "sources": [
+        "src/screen_capture.cc",
+        "src/process_enum.cc",
+        "src/addon_main.cc"
+      ],
+      "include_dirs": [
+        "<!@(node -p \"require('node-addon-api').include\")"
+      ],
+      "dependencies": [
+        "<!(node -p \"require('node-addon-api').gyp\")"
+      ],
+      "defines": ["NAPI_CPP_EXCEPTIONS"],
+      "conditions": [
+        [
+          "OS=='win'",
+          {
+            "libraries": ["-lpsapi", "-lGdi32", "-lUser32", "-lkernel32"],
+            "defines+": ["_WIN32_WINNT=0x0601", "WIN32_LEAN_AND_MEAN"],
+            "msvs_settings": {
+              "VCCLCompilerTool": {
+                "ExceptionHandling": 1,
+                "AdditionalOptions": ["/EHsc", "/std:c++17"]
+              }
+            }
+          }
+        ],
+        [
+          "OS=='mac'",
+          {
+            "xcode_settings": {
+              "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
+              "CLANG_CXX_LIBRARY": "libc++",
+              "MACOSX_DEPLOYMENT_TARGET": "12.0",
+              "OTHER_CPLUSPLUSFLAGS": ["-std=c++17"]
+            },
+            "libraries": ["-framework CoreGraphics", "-framework Foundation"]
+          }
+        ],
+        [
+          "OS=='linux'",
+          {
+            "cflags_cc+": ["-std=c++17"],
+            "libraries": ["-lX11", "-lXext"]
+          }
+        ]
+      ]
+    }
+  ]
+}

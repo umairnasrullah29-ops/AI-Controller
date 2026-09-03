@@ -1,0 +1,122 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+!.env.example
+
+# Next.js & Build Artifacts
+.next/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# TypeScript Build Output (keep .d.ts tracked if needed, ignore compiled JS)
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+!packages/native/index.d.ts
+
+# ─── Native C++ Addon Build Artifacts ───────────────────────────────────────
+packages/native/build/
+packages/native/Release/
+packages/native/Debug/
+*.node
+*.pdb
+*.ilk
+*.exp
+*.lib
+# node-gyp intermediates
+**/.node_recompile
+**/obj.target/
+**/Release/obj.target/
+
+# ─── Playwright Browser Binaries & Cache ─────────────────────────────────────
+# Playwright downloads Chromium/Firefox/Webkit here
+!**/playwright.config.*
+ms-playwright/
+playwright-downloads/
+# Playwright test results
+test-results/
+playwright-report/
+
+# ─── Screenshots & Temp Files ────────────────────────────────────────────────
+# Auto-generated screenshot directories
+**/ai-pc-screenshots/
+**/ai-pc-browser-screenshots/
+# Undo engine backup snapshots
+**/ai-pc-undo/
+
+# Database & Persistent Storage
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+dev.db
+dev.db-journal
+prisma/migrations/
+# Keep schema tracked
+!packages/database/prisma/schema.prisma
+
+# Logs & Diagnostics
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# OS Specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# IDE & Editor Files
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.sublime-workspace
+*.sublime-project
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing & Coverage
+.turbo
+.cache
+coverage/
+.nyc_output
+# Keep test scripts tracked
+!test-suite.js
+!test-chat.js
+!test-gemini.js
+
+# Docker (if re-introduced later)
+.docker/
+docker-compose.override.yml
+
+# Miscellaneous
+*.bak
+*.backup
+*.tmp
+*.temp
+~*
