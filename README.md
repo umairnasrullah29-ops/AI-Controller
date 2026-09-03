@@ -4,6 +4,32 @@
 
 ---
 
+## ⚡ Zero-Dependency Automated Setup for Any Machine
+
+If Node.js is **NOT installed** on a user's machine, double-clicking the **`AI Local PC Controller`** Desktop icon or running **`install-and-run.bat`** automatically:
+1. Detects that Node.js is missing.
+2. Automatically downloads and installs **Node.js LTS** via `winget` or direct official MSI download.
+3. Automatically runs `npm run setup` to install all workspace dependencies, Prisma database tables, and Playwright Chromium binaries.
+4. Generates the **`AI Local PC Controller`** shortcut icon on their Desktop.
+5. Starts the Host Agent (port `8765`), Web UI (port `3001`), and opens the browser to `http://localhost:3001`.
+
+---
+
+## 🖥️ 1-Click Launch Options
+
+```bash
+# Option A: Double-Click "AI Local PC Controller" Desktop Icon
+# (Automatically installs Node.js + dependencies if missing and launches app)
+
+# Option B: Run via Windows Batch File
+install-and-run.bat
+
+# Option C: Run via Terminal (if Node.js is already installed)
+npm start
+```
+
+---
+
 ## 📖 Complete Technical & Interview Guide
 
 For an in-depth architecture deep dive, security model breakdown, and technical Q&A manual for developer interviews, see:  
@@ -11,59 +37,21 @@ For an in-depth architecture deep dive, security model breakdown, and technical 
 
 ---
 
-## 🚀 Native C++ Hooks & Advanced Capabilities (v2.0)
+## 📋 Environment Configuration (`.env`)
 
-### 1. ⚡ Native C++ N-API OS Hooks (`packages/native`)
-- **Ultra-Low Latency Screen Capture**: Native GDI `BitBlt` capture targeting **< 10ms** execution time for primary desktop displays.
-- **Native Process Enumeration**: Native `TlHelp32` + `PSAPI` process snapshot enumeration for instant process listing.
-- **Graceful Fallback**: Automatically falls back to PowerShell GDI / `tasklist` CLI if C++ build tools are not present on the host OS.
+Verify `.env` in the root folder contains:
 
-### 2. 🌐 Playwright Browser Session Manager (`packages/tools/src/browser`)
-- **Interactive DOM Control**: `browser.navigate`, `browser.click`, `browser.type`, `browser.fill_form`, `browser.screenshot`, `browser.search`, and `browser.close`.
-- **Singleton Session Pool**: Manages headless Chromium browser pages with a 5-minute auto-cleanup timer.
-- **Secret & Credential Scrubbing**: Automatically redacts API keys, Bearer tokens, passwords, and sensitive cookies before page text is exposed to the AI model context.
-
-### 3. 📝 AI File Reading & Editing Suite (`filesystem.read` & `filesystem.write`)
-- **Context-Aware File Editing**: The AI reads existing file content via `filesystem.read` to understand context before applying targeted modifications with `filesystem.write`.
-- **Pre-Mutation Rollback Snapshots**: Automatically creates an `UndoEngine` snapshot before overwriting any existing file, enabling 1-click restore via `/api/undo`.
-- **Context-Driven Clarification**: If essential parameters (target path, edit specifications) are missing or incomplete, the AI gracefully yields an `ask_clarification` response to clarify user intent.
-
----
-
-## 🏗️ Security Pipeline & Architecture
-
-The system enforces a non-negotiable security hierarchy where **the LLM is a reasoning engine only, never an execution authority**:
-
-```
-User Voice / Text (Web UI)
-  │ (Push-to-Talk via Deepgram Nova-2 STT)
-  ▼
-API Gateway (`POST /api/chat`)
-  │
-  ▼
-AI Provider (`@ai-pc/ai` -> Gemini 3.6 Flash)
-  │ (Returns structured JSON `AgentDecision`)
-  ▼
-Schema Validation (Zod Type Check)
-  │
-  ▼
-Policy Engine (`@ai-pc/executor`)
-  │ (Evaluates risk: safe | low | medium | high | critical)
-  │ ─── If High Risk ───► Awaiting Approval (User Authorization Card)
-  ▼
-Execution Gateway
-  │ (Signs payload with HMAC-SHA256 & Timestamp)
-  ▼
-Host Agent (`apps/host-agent` on `http://127.0.0.1:8765`)
-  │ (Runs natively on Windows Host OS)
-  ▼
-OS Execution (`@ai-pc/tools`)
-  │ (Executes declared tool, runs independent verification logic)
-  ▼
-Audit Logger & Undo Engine (`@ai-pc/database`)
-  │ (Persists before/after state & pre-mutation rollback snapshots)
-  ▼
-Natural Language Result + Deepgram Aura TTS Audio Stream
+```env
+DATABASE_URL="file:./dev.db"
+GEMINI_API_KEY="your-gemini-api-key"
+GEMINI_MODEL="gemini-3.6-flash"
+DEEPGRAM_API_KEY="your-deepgram-api-key"
+DEEPGRAM_STT_MODEL="nova-2"
+DEEPGRAM_TTS_VOICE="aura-asteria-en"
+HOST_AGENT_URL="http://127.0.0.1:8765"
+HOST_AGENT_PORT="8765"
+HOST_AGENT_SECRET="super-secret-host-agent-key-change-in-prod-12345"
+PORT="3001"
 ```
 
 ---
@@ -108,21 +96,3 @@ Running `npm test` executes **20 automated tests** covering Zod contracts, polic
 📊 TEST SUITE SUMMARY: 20 PASSED, 0 FAILED
 ==========================================================
 ```
-
----
-
-## ⚡ Quick Start
-
-```bash
-# 1. Start Host Agent AND Web UI concurrently:
-npm start
-
-# 2. Run the 20-test automated verification suite:
-npm test
-
-# 3. Optional: Compile Native C++ Addon (requires Visual Studio C++ Build Tools):
-npm run build:addon
-```
-
-- **Web Interface**: `http://localhost:3001`
-- **Host Agent Gateway**: `http://127.0.0.1:8765`
